@@ -12,83 +12,71 @@ import javafx.application.Platform;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
 public class Main extends Application{
 
-	private Button button;
-
-	private ArrayList<String> lastcmd = new ArrayList<>(32);
-	private int lastcmdposition = 0;
+	private ArrayList<String> commandlist = new ArrayList<>(32);
+	private int posincommandlist = 0;
 
 	TextArea cmdArea;
 
-	public static void main(String[] args) {launch(args);}
+	public static void main(String[] args) { launch(args); }
 
 	@Override
 	public void start(Stage primaryStage) throws Exception {
+
 		Stage window = primaryStage;
 		window.setTitle("Title");
 		window.setOnCloseRequest(e -> {
 			e.consume();
-		    System.err.println("Program closed");
-		    window.close();});
+		    window.close();
+		});
 
 		BorderPane layout = new BorderPane();
 		layout.setPadding(new Insets(10));
 
-		//Need fixing
-		cmdArea = new TextArea("ping 192.168.1.1");
-		    cmdArea.setFont(Font.font("Consolas"));
+		cmdArea = new TextArea();
 			cmdArea.setOnKeyPressed(new EventHandler<KeyEvent>() {
 		        @Override
 		        public void handle(KeyEvent ke) {
-                    if (ke.getCode().equals(KeyCode.ENTER)) {
+					KeyCode kc = ke.getCode();
+                    if (kc.equals(KeyCode.ENTER)) {
+						ke.consume();
 						onCommandRequest(cmdArea);
 					}
-					else if (ke.getCode().equals(KeyCode.UP)) {
+					else if (kc.equals(KeyCode.UP)) {
 						ke.consume();
-						if (lastcmdposition > 0) {lastcmdposition--;}
-						updateTextAreaLastLine(lastcmd.get(lastcmdposition), cmdArea);
+						if (posincommandlist > 0) { posincommandlist--; }
+						updateTextAreaLastLine(commandlist.get(posincommandlist), cmdArea);
 					}
-					else if (ke.getCode().equals(KeyCode.DOWN)) {
+					else if (kc.equals(KeyCode.DOWN)) {
 						ke.consume();
-						if (lastcmdposition < lastcmd.size()-1) { lastcmdposition++; }
-						updateTextAreaLastLine(lastcmd.get(lastcmdposition), cmdArea);
+						if (posincommandlist < commandlist.size()-1) { posincommandlist++; }
+						updateTextAreaLastLine(commandlist.get(posincommandlist), cmdArea);
 					}
                 }
             });
 		layout.setBottom(cmdArea);
 
-		button = new Button("OK");
-		button.setOnAction(e -> onCommandRequest(cmdArea));
-		layout.setRight(button);
-
 		Scene scene = new Scene(layout, 640, 480);
 		window.setScene(scene);
 		window.show();
+
+		cmdArea.positionCaret(cmdArea.getLength());
 	}
 
-	private int getLastLine(TextArea textArea) {
-		int lastline = cmdArea.getText().lastIndexOf('\n');
-		if (lastline == -1) { lastline = 0; }
-		return lastline;
-	}
+	private int getLastLine(TextArea textArea) { return textArea.getText().lastIndexOf('\n'); }
 
 	private void onCommandRequest(TextArea cmdArea) {
-		cmdArea.setEditable(false);
-
-		lastcmd.add(cmdArea.getText(getLastLine(cmdArea), cmdArea.getLength()));
-		lastcmdposition = lastcmd.size()-1;
-		executeCommand("cmd /c" + lastcmd.get(lastcmdposition), cmdArea);
+		commandlist.add(cmdArea.getText(getLastLine(cmdArea)+1, cmdArea.getLength()));
+		posincommandlist = commandlist.size();
+		executeCommand("cmd /c" + commandlist.get(posincommandlist-1), cmdArea);
 		cmdArea.positionCaret(cmdArea.getLength());
-		cmdArea.setEditable(true);
 	}
 
 	@SuppressWarnings("NestedAssignment")
@@ -98,7 +86,7 @@ public class Main extends Application{
 		    Process p;
 		    try {
 			    p = Runtime.getRuntime().exec(command);
-			    p.waitFor(1, TimeUnit.SECONDS);
+			    p.waitFor(5, TimeUnit.SECONDS);
 			    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
     			String line;
 	    		while ((line = reader.readLine())!= null) { updateTextArea(line + "\n", output, true); }
@@ -109,26 +97,24 @@ public class Main extends Application{
 		thread.start();
 	}
 
-	private void updateTextArea(String text, TextArea outputTextArea, boolean append) {
-		if (Platform.isFxApplicationThread()) {
-			if (append) { outputTextArea.appendText(text); }
-			else { outputTextArea.setText(text); }
+	private void updateTextArea(String text, TextArea textArea, boolean append) {
+		if (append) {
+			if (Platform.isFxApplicationThread()) { textArea.appendText(text); }
+			else { Platform.runLater(() -> textArea.appendText(text)); }
 		}
-		else {
-			Platform.runLater(() -> {
-		        if (append) { outputTextArea.appendText(text); }
-			    else { outputTextArea.setText(text); }}
-			);
+		else if (!append) {
+		    if (Platform.isFxApplicationThread()) { textArea.setText(text); }
+			else { Platform.runLater(() -> textArea.setText(text)); }
 		}
 	}
 
-	private void updateTextAreaLastLine(String command, TextArea outputTextArea) {
+	private void updateTextAreaLastLine(String text, TextArea textArea) {
 		if (Platform.isFxApplicationThread()) {
-			outputTextArea.replaceText(getLastLine(cmdArea)+1, cmdArea.getLength(), command);
+			textArea.replaceText(getLastLine(cmdArea)+1, cmdArea.getLength(), text);
 		}
 		else {
 			Platform.runLater(() -> {
-		        outputTextArea.replaceText(getLastLine(cmdArea), cmdArea.getLength(), command);
+		        textArea.replaceText(getLastLine(cmdArea), cmdArea.getLength(), text);
 			});
 		}
 	}
