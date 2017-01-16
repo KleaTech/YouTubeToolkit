@@ -5,20 +5,29 @@ package hu.kleatech.youtubetoolkit;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
 public class Main extends Application{
 
-	Button button;
+	private Button button;
+
+	private ArrayList<String> lastcmd = new ArrayList<>(32);
+	private int lastcmdposition = 0;
+
+	TextArea cmdArea;
 
 	public static void main(String[] args) {launch(args);}
 
@@ -34,17 +43,31 @@ public class Main extends Application{
 		BorderPane layout = new BorderPane();
 		layout.setPadding(new Insets(10));
 
-		TextArea input = new TextArea("dir");
-		    input.setFont(Font.font("Consolas"));
-		layout.setBottom(input);
-
-		TextArea output = new TextArea();
-		    output.setEditable(false);
-			output.setFont(Font.font("Consolas"));
-		layout.setCenter(output);
+		//Need fixing
+		cmdArea = new TextArea("ping 192.168.1.1");
+		    cmdArea.setFont(Font.font("Consolas"));
+			cmdArea.setOnKeyPressed(new EventHandler<KeyEvent>() {
+		        @Override
+		        public void handle(KeyEvent ke) {
+                    if (ke.getCode().equals(KeyCode.ENTER)) {
+						onCommandRequest(cmdArea);
+					}
+					else if (ke.getCode().equals(KeyCode.UP)) {
+						ke.consume();
+						if (lastcmdposition > 0) {lastcmdposition--;}
+						updateTextAreaLastLine(lastcmd.get(lastcmdposition), cmdArea);
+					}
+					else if (ke.getCode().equals(KeyCode.DOWN)) {
+						ke.consume();
+						if (lastcmdposition < lastcmd.size()-1) { lastcmdposition++; }
+						updateTextAreaLastLine(lastcmd.get(lastcmdposition), cmdArea);
+					}
+                }
+            });
+		layout.setBottom(cmdArea);
 
 		button = new Button("OK");
-		button.setOnAction(e -> executeCommand("cmd /c" + input.getText(), output));
+		button.setOnAction(e -> onCommandRequest(cmdArea));
 		layout.setRight(button);
 
 		Scene scene = new Scene(layout, 640, 480);
@@ -52,15 +75,30 @@ public class Main extends Application{
 		window.show();
 	}
 
+	private int getLastLine(TextArea textArea) {
+		int lastline = cmdArea.getText().lastIndexOf('\n');
+		if (lastline == -1) { lastline = 0; }
+		return lastline;
+	}
+
+	private void onCommandRequest(TextArea cmdArea) {
+		cmdArea.setEditable(false);
+
+		lastcmd.add(cmdArea.getText(getLastLine(cmdArea), cmdArea.getLength()));
+		lastcmdposition = lastcmd.size()-1;
+		executeCommand("cmd /c" + lastcmd.get(lastcmdposition), cmdArea);
+		cmdArea.positionCaret(cmdArea.getLength());
+		cmdArea.setEditable(true);
+	}
+
 	@SuppressWarnings("NestedAssignment")
 	private void executeCommand(String command, TextArea output) {
 		Thread thread = new Thread(() -> {
-		    updateTextArea("", output, false);
+		    updateTextArea("\n", output, true);
 		    Process p;
-		   try {
+		    try {
 			    p = Runtime.getRuntime().exec(command);
 			    p.waitFor(1, TimeUnit.SECONDS);
-			    System.err.println("Line reached");
 			    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
     			String line;
 	    		while ((line = reader.readLine())!= null) { updateTextArea(line + "\n", output, true); }
@@ -81,6 +119,17 @@ public class Main extends Application{
 		        if (append) { outputTextArea.appendText(text); }
 			    else { outputTextArea.setText(text); }}
 			);
+		}
+	}
+
+	private void updateTextAreaLastLine(String command, TextArea outputTextArea) {
+		if (Platform.isFxApplicationThread()) {
+			outputTextArea.replaceText(getLastLine(cmdArea)+1, cmdArea.getLength(), command);
+		}
+		else {
+			Platform.runLater(() -> {
+		        outputTextArea.replaceText(getLastLine(cmdArea), cmdArea.getLength(), command);
+			});
 		}
 	}
 }
