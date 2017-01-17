@@ -20,102 +20,106 @@ import javafx.stage.Stage;
 
 public class Main extends Application{
 
-	private ArrayList<String> commandlist = new ArrayList<>(32);
-	private int posincommandlist = 0;
+    private ArrayList<String> commandlist = new ArrayList<>(32);
+    private int posincommandlist = 0;
 
-	TextArea cmdArea;
+    TextArea cmdArea;
 
-	public static void main(String[] args) { launch(args); }
+    public static void main(String[] args) { launch(args); }
 
-	@Override
-	public void start(Stage primaryStage) throws Exception {
+    @Override
+    public void start(Stage primaryStage) throws Exception {
 
-		Stage window = primaryStage;
-		window.setTitle("Title");
-		window.setOnCloseRequest(e -> {
-			e.consume();
-		    window.close();
-		});
+        Stage window = primaryStage;
+        window.setTitle("Title");
+        window.setOnCloseRequest(e -> {
+            e.consume();
+	    window.close();
+	});
 
-		BorderPane layout = new BorderPane();
-		layout.setPadding(new Insets(10));
+	BorderPane layout = new BorderPane();
+	layout.setPadding(new Insets(10));
 
-		cmdArea = new TextArea();
-			cmdArea.setOnKeyPressed(new EventHandler<KeyEvent>() {
-		        @Override
-		        public void handle(KeyEvent ke) {
-					KeyCode kc = ke.getCode();
-                    if (kc.equals(KeyCode.ENTER)) {
-						ke.consume();
-						onCommandRequest(cmdArea);
-					}
-					else if (kc.equals(KeyCode.UP)) {
-						ke.consume();
-						if (posincommandlist > 0) { posincommandlist--; }
-						updateTextAreaLastLine(commandlist.get(posincommandlist), cmdArea);
-					}
-					else if (kc.equals(KeyCode.DOWN)) {
-						ke.consume();
-						if (posincommandlist < commandlist.size()-1) { posincommandlist++; }
-						updateTextAreaLastLine(commandlist.get(posincommandlist), cmdArea);
-					}
+	cmdArea = new TextArea();
+            cmdArea.setOnKeyPressed(new EventHandler<KeyEvent>() {
+                @Override
+                public void handle(KeyEvent ke) {
+                    KeyCode kc = ke.getCode();
+                    switch (kc) {
+                        case ENTER:
+                            ke.consume();
+                            onCommandRequest(cmdArea);
+                            break;
+                        case UP:
+                            ke.consume();
+                            if (posincommandlist > 0) { posincommandlist--; }
+                            updateTextAreaLastLine(commandlist.get(posincommandlist), cmdArea);
+                            break;
+                        case DOWN:
+                            ke.consume();
+                            if (posincommandlist < commandlist.size()-1) { posincommandlist++; }
+                            updateTextAreaLastLine(commandlist.get(posincommandlist), cmdArea);
+                            break;
+                        default:
+                            break;
+                    }
                 }
             });
-		layout.setBottom(cmdArea);
+	layout.setBottom(cmdArea);
 
-		Scene scene = new Scene(layout, 640, 480);
-		window.setScene(scene);
-		window.show();
+	Scene scene = new Scene(layout, 640, 480);
+	window.setScene(scene);
+	window.show();
 
-		cmdArea.positionCaret(cmdArea.getLength());
+        cmdArea.positionCaret(cmdArea.getLength());
+    }
+
+    private int getLastLine(TextArea textArea) { return textArea.getText().lastIndexOf('\n'); }
+
+    private void onCommandRequest(TextArea cmdArea) {
+        commandlist.add(cmdArea.getText(getLastLine(cmdArea)+1, cmdArea.getLength()));
+        posincommandlist = commandlist.size();
+        executeCommand("cmd /c" + commandlist.get(posincommandlist-1), cmdArea);
+        cmdArea.positionCaret(cmdArea.getLength());
+    }
+
+    @SuppressWarnings("NestedAssignment")
+    private void executeCommand(String command, TextArea output) {
+        Thread thread = new Thread(() -> {
+            updateTextArea("\n", output, true);
+            Process p;
+            try {
+                p = Runtime.getRuntime().exec(command);
+	        p.waitFor(5, TimeUnit.SECONDS);
+	        BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
+    	        String line;
+	        while ((line = reader.readLine())!= null) { updateTextArea(line + "\n", output, true); }
+            } catch (Exception e) {
+	        System.err.println("Error: " + e.toString());
+	    }
+	});
+	thread.start();
+    }
+
+    private void updateTextArea(String text, TextArea textArea, boolean append) {
+	if (append) {
+            if (Platform.isFxApplicationThread()) { textArea.appendText(text); }
+	    else { Platform.runLater(() -> textArea.appendText(text)); }
 	}
-
-	private int getLastLine(TextArea textArea) { return textArea.getText().lastIndexOf('\n'); }
-
-	private void onCommandRequest(TextArea cmdArea) {
-		commandlist.add(cmdArea.getText(getLastLine(cmdArea)+1, cmdArea.getLength()));
-		posincommandlist = commandlist.size();
-		executeCommand("cmd /c" + commandlist.get(posincommandlist-1), cmdArea);
-		cmdArea.positionCaret(cmdArea.getLength());
+	else if (!append) {
+	    if (Platform.isFxApplicationThread()) { textArea.setText(text); }
+	    else { Platform.runLater(() -> textArea.setText(text)); }
 	}
+    }
 
-	@SuppressWarnings("NestedAssignment")
-	private void executeCommand(String command, TextArea output) {
-		Thread thread = new Thread(() -> {
-		    updateTextArea("\n", output, true);
-		    Process p;
-		    try {
-			    p = Runtime.getRuntime().exec(command);
-			    p.waitFor(5, TimeUnit.SECONDS);
-			    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
-    			String line;
-	    		while ((line = reader.readLine())!= null) { updateTextArea(line + "\n", output, true); }
-		    } catch (Exception e) {
-			    System.err.println("Error: " + e.toString());
-		    }
-		});
-		thread.start();
+    private void updateTextAreaLastLine(String text, TextArea textArea) {
+	if (Platform.isFxApplicationThread()) {
+            textArea.replaceText(getLastLine(cmdArea)+1, cmdArea.getLength(), text);
 	}
-
-	private void updateTextArea(String text, TextArea textArea, boolean append) {
-		if (append) {
-			if (Platform.isFxApplicationThread()) { textArea.appendText(text); }
-			else { Platform.runLater(() -> textArea.appendText(text)); }
-		}
-		else if (!append) {
-		    if (Platform.isFxApplicationThread()) { textArea.setText(text); }
-			else { Platform.runLater(() -> textArea.setText(text)); }
-		}
+	else {
+	    Platform.runLater(() -> {
+	        textArea.replaceText(getLastLine(cmdArea), cmdArea.getLength(), text);
+	    });
 	}
-
-	private void updateTextAreaLastLine(String text, TextArea textArea) {
-		if (Platform.isFxApplicationThread()) {
-			textArea.replaceText(getLastLine(cmdArea)+1, cmdArea.getLength(), text);
-		}
-		else {
-			Platform.runLater(() -> {
-		        textArea.replaceText(getLastLine(cmdArea), cmdArea.getLength(), text);
-			});
-		}
-	}
+    }
 }
